@@ -46,7 +46,7 @@ export default function SignInScreen() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-ink-950">
+    <SafeAreaView className="flex-1" style={{ backgroundColor: 'transparent' }}>
       <StatusBar barStyle="light-content" backgroundColor="#050505" />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
