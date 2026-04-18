@@ -56,21 +56,34 @@ function RootLayoutNav() {
     if (loading) return;
 
     const top = segments[0]; // '(auth)' | '(onboarding)' | '(tabs)' | undefined
+    const sub = segments[1]; // e.g. 'experience' | 'niches' | 'sign-in' | 'home'
 
     const isSignedIn = !!session;
     const hasExperience = !!user?.user_metadata?.experience_level;
+    const niches = user?.user_metadata?.niches as string[] | undefined;
+    const hasNiches = Array.isArray(niches) && niches.length > 0;
 
     if (!isSignedIn && top !== '(auth)') {
       router.replace('/sign-in');
       return;
     }
 
-    if (isSignedIn && !hasExperience && top !== '(onboarding)') {
+    if (isSignedIn && !hasExperience && sub !== 'experience') {
       router.replace('/experience');
       return;
     }
 
-    if (isSignedIn && hasExperience && (top === '(auth)' || top === '(onboarding)' || top === undefined)) {
+    if (isSignedIn && hasExperience && !hasNiches && sub !== 'niches') {
+      router.replace('/niches');
+      return;
+    }
+
+    if (
+      isSignedIn &&
+      hasExperience &&
+      hasNiches &&
+      (top === '(auth)' || top === '(onboarding)' || top === undefined)
+    ) {
       router.replace('/home');
     }
   }, [loading, session, user, segments, router]);
