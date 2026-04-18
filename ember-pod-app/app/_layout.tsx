@@ -5,9 +5,9 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import { View } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import 'react-native-reanimated';
 
-import { AmbientBackground } from '@/components/AmbientBackground';
 import { SessionProvider, useSession } from '@/lib/session';
 
 import '../global.css';
@@ -41,9 +41,11 @@ export default function RootLayout() {
   }
 
   return (
-    <SessionProvider>
-      <RootLayoutNav />
-    </SessionProvider>
+    <SafeAreaProvider>
+      <SessionProvider>
+        <RootLayoutNav />
+      </SessionProvider>
+    </SafeAreaProvider>
   );
 }
 
@@ -73,25 +75,30 @@ function RootLayoutNav() {
 
   return (
     <ThemeProvider value={DarkTheme}>
+      {/* Flat Robinhood-style background — pure #050505, no ambient gradient.
+          The old AmbientBackground component faked `filter: blur(120px)` radial
+          blobs via circular Views and read as "puff smoke" on native. Removed.
+          Each screen can layer its own subtle surfaces via <GlassCard/>. */}
       <View style={{ flex: 1, backgroundColor: '#050505' }}>
-        <AmbientBackground />
-        <View style={{ flex: 1, position: 'relative', zIndex: 1 }}>
-          <Stack
-            screenOptions={{
-              headerShown: false,
-              contentStyle: { backgroundColor: 'transparent' },
-            }}
-          >
-            <Stack.Screen name="(auth)" />
-            <Stack.Screen name="(tabs)" />
-            <Stack.Screen name="(onboarding)" />
-            <Stack.Screen
-              name="shop-setup"
-              options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
-            />
-            <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-          </Stack>
-        </View>
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: 'transparent' },
+          }}
+        >
+          <Stack.Screen name="(auth)" />
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="(onboarding)" />
+          <Stack.Screen
+            name="shop-setup"
+            options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
+          />
+          <Stack.Screen
+            name="notifications"
+            options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
+          />
+          <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+        </Stack>
       </View>
     </ThemeProvider>
   );

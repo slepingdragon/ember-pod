@@ -1,6 +1,5 @@
-import { BlurView } from 'expo-blur';
 import { ReactNode } from 'react';
-import { Pressable, StyleSheet, View, ViewStyle } from 'react-native';
+import { Pressable, View, ViewStyle } from 'react-native';
 
 type GlassRadius = 'lg' | 'xl' | '2xl' | '3xl' | 'full';
 
@@ -15,7 +14,7 @@ const RADIUS_MAP: Record<GlassRadius, number> = {
 type Props = {
   children: ReactNode;
   style?: ViewStyle | ViewStyle[];
-  /** Slightly brighter card — matches the landing page's `.glass-strong`. */
+  /** Slightly brighter fill — use on hover/active cards or primary panels. */
   strong?: boolean;
   radius?: GlassRadius;
   /** When set, the whole card becomes pressable. */
@@ -25,15 +24,15 @@ type Props = {
 };
 
 /**
- * Glass card matching the landing page's `.glass` / `.glass-strong` classes:
+ * Flat card — Robinhood-style surface.
  *
- *   backdrop-filter: blur(20px) saturate(140%);
- *   background: rgba(255,255,255,0.03);   // 0.06 for strong
- *   border: 1px solid rgba(255,255,255,0.08); // 0.10 for strong
+ *   background: rgba(255,255,255,0.03)   // 0.05 for strong
+ *   border:     1px rgba(255,255,255,0.08) // 0.12 for strong
  *
- * On native, `backdrop-filter` becomes `BlurView` absolutely-filled beneath a
- * tinted overlay. `experimentalBlurMethod="dimezisBlurView"` gives proper blur
- * on Android (API 31+ uses system RenderEffect, older falls back gracefully).
+ * Previously used `BlurView` to mimic the landing page's `backdrop-filter`,
+ * but on native that read as a hazy "puff smoke" effect rather than glass.
+ * Stripped back to a flat translucent surface, which is what Robinhood's
+ * dashboard actually does and which renders identically on iOS/Android/Web.
  */
 export function GlassCard({
   children,
@@ -44,33 +43,16 @@ export function GlassCard({
   disabled,
 }: Props) {
   const borderRadius = RADIUS_MAP[radius];
-  const tintColor = strong ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.03)';
-  const borderColor = strong ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.08)';
-  const intensity = strong ? 30 : 20;
+  const backgroundColor = strong ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.03)';
+  const borderColor = strong ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.08)';
 
   const shell: ViewStyle = {
     borderRadius,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor,
-    position: 'relative',
+    backgroundColor,
   };
-
-  const content = (
-    <>
-      <BlurView
-        intensity={intensity}
-        tint="dark"
-        experimentalBlurMethod="dimezisBlurView"
-        style={StyleSheet.absoluteFill}
-      />
-      <View
-        style={[StyleSheet.absoluteFill, { backgroundColor: tintColor }]}
-        pointerEvents="none"
-      />
-      <View style={{ position: 'relative' }}>{children}</View>
-    </>
-  );
 
   if (onPress) {
     return (
@@ -84,10 +66,10 @@ export function GlassCard({
           disabled && { opacity: 0.4 },
         ]}
       >
-        {content}
+        {children}
       </Pressable>
     );
   }
 
-  return <View style={[shell, style as ViewStyle]}>{content}</View>;
+  return <View style={[shell, style as ViewStyle]}>{children}</View>;
 }

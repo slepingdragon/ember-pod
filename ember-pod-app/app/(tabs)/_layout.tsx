@@ -1,8 +1,8 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { BlurView } from 'expo-blur';
 import { Tabs } from 'expo-router';
 import React from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 function TabBarIcon(props: {
   name: React.ComponentProps<typeof FontAwesome>['name'];
@@ -12,29 +12,29 @@ function TabBarIcon(props: {
 }
 
 /**
- * Blurred translucent tab bar background — matches the glass aesthetic of
- * the rest of the app. Sits over the ambient gradient at root.
+ * Flat solid tab bar — Robinhood uses a near-opaque dark bar with a faint
+ * 1px hairline. Sits above Android gesture nav via safe-area insets.
  */
-function GlassTabBarBackground() {
+function FlatTabBarBackground() {
   return (
-    <View style={StyleSheet.absoluteFill}>
-      <BlurView
-        intensity={40}
-        tint="dark"
-        experimentalBlurMethod="dimezisBlurView"
-        style={StyleSheet.absoluteFill}
-      />
-      <View
-        style={[
-          StyleSheet.absoluteFill,
-          { backgroundColor: 'rgba(5,5,5,0.55)' },
-        ]}
-      />
-    </View>
+    <View
+      style={[
+        StyleSheet.absoluteFill,
+        { backgroundColor: 'rgba(5,5,5,0.96)' },
+      ]}
+    />
   );
 }
 
 export default function TabLayout() {
+  const insets = useSafeAreaInsets();
+
+  // Add the system's bottom inset so the tab bar lifts above Android's
+  // gesture pill / iOS home indicator. Without this on Android 10+ the bar
+  // overlaps the back-and-home gesture area.
+  const baseHeight = Platform.OS === 'ios' ? 60 : 56;
+  const tabBarHeight = baseHeight + Math.max(insets.bottom, 8);
+
   return (
     <Tabs
       screenOptions={{
@@ -47,10 +47,11 @@ export default function TabLayout() {
           borderTopWidth: 1,
           backgroundColor: 'transparent',
           elevation: 0,
-          height: Platform.OS === 'ios' ? 84 : 64,
+          height: tabBarHeight,
           paddingTop: 8,
+          paddingBottom: Math.max(insets.bottom, 8),
         },
-        tabBarBackground: () => <GlassTabBarBackground />,
+        tabBarBackground: () => <FlatTabBarBackground />,
         tabBarLabelStyle: {
           fontSize: 10,
           fontWeight: '600',
@@ -70,6 +71,13 @@ export default function TabLayout() {
         options={{
           title: 'Create',
           tabBarIcon: ({ color }) => <TabBarIcon name="plus-square" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="autopilot"
+        options={{
+          title: 'Autopilot',
+          tabBarIcon: ({ color }) => <TabBarIcon name="bolt" color={color} />,
         }}
       />
       <Tabs.Screen

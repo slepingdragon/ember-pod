@@ -1,110 +1,58 @@
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
-import { useMemo } from 'react';
+import { ReactNode, useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { EarningsChart } from '@/components/EarningsChart';
 import { GlassCard } from '@/components/GlassCard';
+import {
+  BellIcon,
+  PlusIcon,
+  ShopIcon,
+  SparkleIcon,
+  TrendingIcon,
+} from '@/components/icons';
 import { useSession } from '@/lib/session';
+import { fetchTrending, TrendingKeyword } from '@/lib/trends';
 
 // -----------------------------------------------------------------------------
-// Placeholder data — Session 5 will replace this with live data from:
-//   - Supabase `products` table (created locally, synced to Etsy via API)
-//   - Supabase `orders` table (synced from Etsy transactions_r scope)
-//   - Supabase `earnings_daily` rollup (nightly job from `orders`)
-// Each user's numbers are RLS'd to their own rows.
+// Empty-state dashboard + live trending keywords from Bania's RapidAPI.
+//
+// Earnings are zeroed until a user publishes a product and records a sale.
+// Trending keywords come from the Google Trends Keywords API (PRO plan);
+// cached 1 hour in `lib/trends.ts` to stay under quota.
 // -----------------------------------------------------------------------------
 
-type ProductStatus = 'live' | 'shipped' | 'ready' | 'in_progress';
+const PERIODS = ['1D', '1W', '1M', '3M', '1Y', 'ALL'] as const;
+type Period = (typeof PERIODS)[number];
 
-type DemoProduct = {
-  id: string;
-  title: string;
-  product: string; // "Hoodie" | "Tee" | "Mug" | "Sticker"
-  status: ProductStatus;
-  price: number;
-  sales: number;
-};
-
-const DEMO_PRODUCTS: DemoProduct[] = [
-  { id: '1', title: 'Pickleball Dad Club', product: 'Tee',    status: 'live',        price: 24.00, sales: 12 },
-  { id: '2', title: 'Cold Brew Cult',       product: 'Hoodie', status: 'live',        price: 48.00, sales: 6  },
-  { id: '3', title: 'Succulent Daddy',      product: 'Mug',    status: 'ready',       price: 18.00, sales: 0  },
-  { id: '4', title: 'Retro Sci-Fi Skyline', product: 'Sticker',status: 'in_progress', price: 4.00,  sales: 0  },
-];
-
-const DEMO_STATS = {
-  lifetimeEarnings: 427.5,
-  thisWeek: 84.0,
-  shipped: 18,
-  ready: 4,
-  inProgress: 2,
-  views7d: 312,
-};
-
-// -----------------------------------------------------------------------------
-
-function formatUSD(n: number) {
-  return n.toLocaleString('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2,
-  });
-}
-
-function StatusBadge({ status }: { status: ProductStatus }) {
-  const map: Record<ProductStatus, { label: string; dot: string }> = {
-    live:        { label: 'LIVE',        dot: '#4ADE80' },
-    shipped:     { label: 'SHIPPED',     dot: '#FFFFFF' },
-    ready:       { label: 'READY',       dot: '#FACC15' },
-    in_progress: { label: 'IN PROGRESS', dot: 'rgba(255,255,255,0.5)' },
-  };
-  const { label, dot } = map[status];
+function SectionLabel({ children }: { children: ReactNode }) {
   return (
-    <View
+    <Text
       style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 8,
-        paddingVertical: 3,
-        borderRadius: 9999,
-        backgroundColor: 'rgba(255,255,255,0.06)',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.12)',
+        color: 'rgba(255,255,255,0.4)',
+        fontSize: 11,
+        letterSpacing: 1.4,
+        textTransform: 'uppercase',
+        fontWeight: '600',
       }}
     >
-      <View
-        style={{
-          width: 6,
-          height: 6,
-          borderRadius: 9999,
-          backgroundColor: dot,
-          marginRight: 6,
-        }}
-      />
-      <Text style={{ fontSize: 9, fontWeight: '700', color: 'rgba(255,255,255,0.8)', letterSpacing: 0.8 }}>
-        {label}
-      </Text>
-    </View>
+      {children}
+    </Text>
   );
 }
 
-function StatTile({
-  label,
-  value,
-  accent,
-}: {
-  label: string;
-  value: string | number;
-  accent?: string;
-}) {
+function StatTile({ label, value }: { label: string; value: number }) {
   return (
     <GlassCard style={{ flex: 1 }}>
       <View style={{ padding: 14 }}>
@@ -124,7 +72,7 @@ function StatTile({
           style={{
             fontSize: 26,
             fontWeight: '800',
-            color: accent ?? '#FFFFFF',
+            color: '#FFFFFF',
             letterSpacing: -0.8,
           }}
         >
@@ -136,20 +84,20 @@ function StatTile({
 }
 
 function QuickAction({
-  emoji,
+  icon,
   title,
   subtitle,
   onPress,
 }: {
-  emoji: string;
+  icon: ReactNode;
   title: string;
   subtitle: string;
   onPress: () => void;
 }) {
   return (
     <GlassCard strong style={{ flex: 1 }} onPress={onPress}>
-      <View style={{ padding: 16, minHeight: 128 }}>
-        <Text style={{ fontSize: 26, marginBottom: 10 }}>{emoji}</Text>
+      <View style={{ padding: 16, minHeight: 132 }}>
+        <View style={{ marginBottom: 12 }}>{icon}</View>
         <Text style={{ fontSize: 15, fontWeight: '700', color: '#FFFFFF', letterSpacing: -0.3 }}>
           {title}
         </Text>
@@ -168,62 +116,55 @@ function QuickAction({
   );
 }
 
-function ProductRow({ p }: { p: DemoProduct }) {
+function TrendCard({
+  item,
+  onPress,
+}: {
+  item: TrendingKeyword;
+  onPress: () => void;
+}) {
   return (
-    <GlassCard>
-      <View
-        style={{
-          padding: 14,
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 14,
-        }}
-      >
-        {/* Thumbnail placeholder (next session: real mockup image) */}
-        <View
-          style={{
-            width: 56,
-            height: 56,
-            borderRadius: 12,
-            backgroundColor: 'rgba(255,255,255,0.05)',
-            borderWidth: 1,
-            borderColor: 'rgba(255,255,255,0.10)',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Text style={{ fontSize: 22 }}>
-            {p.product === 'Hoodie' ? '\uD83E\uDDE5' : // 🧥
-              p.product === 'Tee' ? '\uD83D\uDC55' : // 👕
-              p.product === 'Mug' ? '\u2615' : // ☕
-              '\uD83C\uDFB4'} {/* 🎴 sticker-ish */}
+    <GlassCard strong style={{ width: 220 }} onPress={onPress}>
+      <View style={{ padding: 14, minHeight: 120, justifyContent: 'space-between' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <TrendingIcon size={14} color="rgba(255,255,255,0.75)" />
+          <Text
+            style={{
+              color: 'rgba(255,255,255,0.55)',
+              fontSize: 10,
+              letterSpacing: 1.2,
+              textTransform: 'uppercase',
+              fontWeight: '700',
+            }}
+          >
+            Trending
           </Text>
         </View>
-
-        <View style={{ flex: 1 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Text
-              style={{ fontSize: 15, fontWeight: '700', color: '#FFFFFF', letterSpacing: -0.2 }}
-              numberOfLines={1}
-            >
-              {p.title}
-            </Text>
-            <StatusBadge status={p.status} />
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 10 }}>
-            <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>{p.product}</Text>
-            <View style={{ width: 3, height: 3, borderRadius: 9999, backgroundColor: 'rgba(255,255,255,0.25)' }} />
-            <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>{formatUSD(p.price)}</Text>
-            {p.sales > 0 ? (
-              <>
-                <View style={{ width: 3, height: 3, borderRadius: 9999, backgroundColor: 'rgba(255,255,255,0.25)' }} />
-                <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.75)', fontWeight: '600' }}>
-                  {p.sales} sold
-                </Text>
-              </>
-            ) : null}
-          </View>
-        </View>
+        <Text
+          style={{
+            color: '#FFFFFF',
+            fontSize: 16,
+            fontWeight: '800',
+            letterSpacing: -0.3,
+            lineHeight: 20,
+          }}
+          numberOfLines={2}
+        >
+          {item.keyword}
+        </Text>
+        {item.note ? (
+          <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 11, lineHeight: 15 }} numberOfLines={2}>
+            {item.note}
+          </Text>
+        ) : typeof item.score === 'number' ? (
+          <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 11 }}>
+            Score {Math.round(item.score)}
+          </Text>
+        ) : (
+          <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>
+            Tap to design
+          </Text>
+        )}
       </View>
     </GlassCard>
   );
@@ -232,6 +173,9 @@ function ProductRow({ p }: { p: DemoProduct }) {
 export default function HomeScreen() {
   const { user } = useSession();
   const router = useRouter();
+  const { width } = useWindowDimensions();
+  const [period, setPeriod] = useState<Period>('ALL');
+  const [trending, setTrending] = useState<TrendingKeyword[] | null>(null);
 
   // First-name-ish greeting from email prefix. Real profile name comes later
   // when we add a `profiles` table in Supabase.
@@ -239,11 +183,22 @@ export default function HomeScreen() {
     const email = user?.email ?? '';
     const prefix = email.split('@')[0] ?? '';
     if (!prefix) return 'Welcome';
-    // 'baniabradyy' -> 'Bania' (first alphabetic run, capitalized)
     const m = prefix.match(/^[a-zA-Z]+/);
     const name = m ? m[0] : prefix;
     return `Hey, ${name.charAt(0).toUpperCase()}${name.slice(1)}`;
   }, [user]);
+
+  // Load trending keywords on mount. Cache is in-memory w/ 1h TTL so this is
+  // cheap across re-renders, and fetchTrending swallows errors.
+  useEffect(() => {
+    let alive = true;
+    fetchTrending().then((list) => {
+      if (alive) setTrending(list);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const buzz = (kind: 'light' | 'medium' = 'light') => {
     if (Platform.OS === 'web') return;
@@ -262,19 +217,27 @@ export default function HomeScreen() {
     router.push('/shop-setup');
   };
 
+  const goNotifications = () => {
+    buzz('light');
+    router.push('/notifications');
+  };
+
+  // Chart width is screen width minus the 20px gutter on each side.
+  const chartWidth = Math.max(0, width - 40);
+
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }}>
+    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: 'transparent' }}>
       <StatusBar barStyle="light-content" backgroundColor="#050505" />
       <ScrollView
-        contentContainerStyle={{ paddingBottom: 120 }}
+        contentContainerStyle={{ paddingBottom: 140 }}
         showsVerticalScrollIndicator={false}
       >
-        {/* ===== TOP NAV ===== */}
+        {/* ===== TOP NAV — logo left, bell right ===== */}
         <View
           style={{
             paddingHorizontal: 20,
-            paddingTop: Platform.OS === 'android' ? 18 : 8,
-            paddingBottom: 8,
+            paddingTop: 4,
+            paddingBottom: 4,
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -297,23 +260,40 @@ export default function HomeScreen() {
               EmberPod
             </Text>
           </View>
-          <Text style={{ color: 'rgba(255,255,255,0.35)', fontSize: 11, letterSpacing: 1, textTransform: 'uppercase' }}>
-            {greeting}
-          </Text>
+          <Pressable
+            onPress={goNotifications}
+            hitSlop={12}
+            style={({ pressed }) => [
+              {
+                width: 40,
+                height: 40,
+                borderRadius: 12,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: 'rgba(255,255,255,0.10)',
+                borderWidth: 1,
+                borderColor: 'rgba(255,255,255,0.22)',
+              },
+              pressed && { opacity: 0.8 },
+            ]}
+          >
+            <BellIcon size={18} color="#FFFFFF" strokeWidth={1.8} />
+          </Pressable>
         </View>
 
-        {/* ===== BIG KPI ===== */}
-        <View style={{ paddingHorizontal: 20, paddingTop: 20 }}>
+        {/* ===== HERO — greeting + big number + delta ===== */}
+        <View style={{ paddingHorizontal: 20, paddingTop: 18 }}>
           <Text
             style={{
-              color: 'rgba(255,255,255,0.4)',
-              fontSize: 11,
-              letterSpacing: 1.4,
+              color: 'rgba(255,255,255,0.45)',
+              fontSize: 12,
+              letterSpacing: 1.2,
               textTransform: 'uppercase',
               fontWeight: '600',
+              marginBottom: 4,
             }}
           >
-            Lifetime earnings
+            {greeting}
           </Text>
           <Text
             style={{
@@ -321,130 +301,246 @@ export default function HomeScreen() {
               fontSize: 56,
               fontWeight: '900',
               letterSpacing: -2.2,
-              marginTop: 4,
             }}
           >
-            {formatUSD(DEMO_STATS.lifetimeEarnings)}
+            $0.00
           </Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8, gap: 8 }}>
-            <View
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 6 }}>
+            <Text
               style={{
-                paddingHorizontal: 8,
-                paddingVertical: 2,
-                borderRadius: 9999,
-                backgroundColor: 'rgba(74,222,128,0.12)',
-                borderWidth: 1,
-                borderColor: 'rgba(74,222,128,0.3)',
+                color: 'rgba(255,255,255,0.55)',
+                fontSize: 14,
+                fontWeight: '600',
               }}
             >
-              <Text style={{ color: '#4ADE80', fontSize: 11, fontWeight: '700' }}>
-                +{formatUSD(DEMO_STATS.thisWeek)}
-              </Text>
-            </View>
-            <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>this week</Text>
+              $0.00 (0.00%)
+            </Text>
+            <Text
+              style={{
+                color: 'rgba(255,255,255,0.4)',
+                fontSize: 12,
+                letterSpacing: 0.4,
+                textTransform: 'uppercase',
+                marginLeft: 4,
+              }}
+            >
+              {period === 'ALL' ? 'All time' : period}
+            </Text>
           </View>
         </View>
 
-        {/* ===== STAT ROW ===== */}
+        {/* ===== CHART (empty state — dashed baseline) ===== */}
+        <View style={{ paddingHorizontal: 20, marginTop: 16 }}>
+          <EarningsChart data={[]} width={chartWidth} height={160} />
+        </View>
+
+        {/* ===== PERIOD PILLS ===== */}
+        <View
+          style={{
+            paddingHorizontal: 20,
+            marginTop: 4,
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+          }}
+        >
+          {PERIODS.map((p) => {
+            const active = p === period;
+            return (
+              <Pressable
+                key={p}
+                onPress={() => {
+                  buzz('light');
+                  setPeriod(p);
+                }}
+                style={{
+                  paddingVertical: 8,
+                  paddingHorizontal: 14,
+                  borderRadius: 9999,
+                  backgroundColor: active ? '#FFFFFF' : 'transparent',
+                }}
+              >
+                <Text
+                  style={{
+                    color: active ? '#000000' : 'rgba(255,255,255,0.7)',
+                    fontSize: 12,
+                    fontWeight: '800',
+                    letterSpacing: 0.6,
+                  }}
+                >
+                  {p}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {/* ===== STAT ROW (all zeros until Supabase rollup lands) ===== */}
         <View style={{ paddingHorizontal: 20, marginTop: 24, flexDirection: 'row', gap: 10 }}>
-          <StatTile label="Shipped" value={DEMO_STATS.shipped} />
-          <StatTile label="Ready" value={DEMO_STATS.ready} />
-          <StatTile label="In progress" value={DEMO_STATS.inProgress} />
+          <StatTile label="Shipped" value={0} />
+          <StatTile label="Ready" value={0} />
+          <StatTile label="In progress" value={0} />
+        </View>
+
+        {/* ===== TRENDING NOW — live from RapidAPI ===== */}
+        <View style={{ paddingTop: 26 }}>
+          <View
+            style={{
+              paddingHorizontal: 20,
+              marginBottom: 10,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <TrendingIcon size={14} color="rgba(255,255,255,0.5)" />
+              <SectionLabel>Trending now</SectionLabel>
+            </View>
+            <Text style={{ color: 'rgba(255,255,255,0.35)', fontSize: 11 }}>
+              Refreshes hourly
+            </Text>
+          </View>
+
+          {trending === null ? (
+            <View style={{ paddingHorizontal: 20 }}>
+              <GlassCard>
+                <View style={{ padding: 18, alignItems: 'center' }}>
+                  <ActivityIndicator color="rgba(255,255,255,0.5)" />
+                  <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, marginTop: 8 }}>
+                    Pulling the latest from Google Trends…
+                  </Text>
+                </View>
+              </GlassCard>
+            </View>
+          ) : trending.length === 0 ? (
+            <View style={{ paddingHorizontal: 20 }}>
+              <GlassCard>
+                <View style={{ padding: 18 }}>
+                  <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '700' }}>
+                    Trends are quiet
+                  </Text>
+                  <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 12, marginTop: 4, lineHeight: 17 }}>
+                    The trends feed is offline or your RapidAPI key isn&apos;t set yet. Copy
+                    {' '}
+                    <Text style={{ fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' }}>.env.example</Text>
+                    {' '}
+                    to
+                    {' '}
+                    <Text style={{ fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' }}>.env</Text>
+                    {' '}
+                    and paste your key.
+                  </Text>
+                </View>
+              </GlassCard>
+            </View>
+          ) : (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ paddingHorizontal: 20, gap: 10 }}
+            >
+              {trending.slice(0, 12).map((t) => (
+                <TrendCard
+                  key={t.keyword}
+                  item={t}
+                  onPress={() => {
+                    buzz('light');
+                    // Session 5: deep-link Create with the keyword preloaded as
+                    // a generation seed. For now just pop Create open.
+                    router.push('/create');
+                  }}
+                />
+              ))}
+            </ScrollView>
+          )}
+        </View>
+
+        {/* ===== YOUR PRODUCTS — empty state ===== */}
+        <View style={{ paddingHorizontal: 20, marginTop: 26 }}>
+          <View style={{ marginBottom: 10 }}>
+            <SectionLabel>Your products</SectionLabel>
+          </View>
+
+          <GlassCard>
+            <View style={{ padding: 22, alignItems: 'center' }}>
+              <View
+                style={{
+                  width: 52,
+                  height: 52,
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: 'rgba(255,255,255,0.15)',
+                  backgroundColor: 'rgba(255,255,255,0.04)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginBottom: 14,
+                }}
+              >
+                <PlusIcon size={22} color="rgba(255,255,255,0.85)" />
+              </View>
+              <Text
+                style={{
+                  color: '#FFFFFF',
+                  fontSize: 16,
+                  fontWeight: '700',
+                  letterSpacing: -0.3,
+                }}
+              >
+                No products yet
+              </Text>
+              <Text
+                style={{
+                  color: 'rgba(255,255,255,0.55)',
+                  fontSize: 13,
+                  textAlign: 'center',
+                  marginTop: 6,
+                  lineHeight: 18,
+                  maxWidth: 280,
+                }}
+              >
+                Build your first product in a few taps. Pick a template, drop a design, publish to Etsy.
+              </Text>
+              <Pressable
+                onPress={goCreate}
+                style={({ pressed }) => [
+                  {
+                    marginTop: 16,
+                    backgroundColor: '#FFFFFF',
+                    paddingVertical: 12,
+                    paddingHorizontal: 22,
+                    borderRadius: 12,
+                  },
+                  pressed && { opacity: 0.85 },
+                ]}
+              >
+                <Text style={{ color: '#000000', fontSize: 14, fontWeight: '800', letterSpacing: -0.2 }}>
+                  Build your first
+                </Text>
+              </Pressable>
+            </View>
+          </GlassCard>
         </View>
 
         {/* ===== QUICK ACTIONS ===== */}
-        <View style={{ paddingHorizontal: 20, marginTop: 14, flexDirection: 'row', gap: 10 }}>
+        <View style={{ paddingHorizontal: 20, marginTop: 16, flexDirection: 'row', gap: 10 }}>
           <QuickAction
-            emoji={'\u2728'}
-            title="Build a product"
-            subtitle="Pick a template, drop a design, publish."
+            icon={<SparkleIcon size={24} color="#FFFFFF" />}
+            title="Generate art"
+            subtitle="AI designs tuned to what's trending right now."
             onPress={goCreate}
           />
           <QuickAction
-            emoji={'\uD83C\uDFEA'}
+            icon={<ShopIcon size={24} color="#FFFFFF" />}
             title="Set up shop"
             subtitle="Walk-through: create Etsy, connect Printful."
             onPress={goShopSetup}
           />
         </View>
 
-        {/* ===== PRODUCTS ===== */}
-        <View style={{ paddingHorizontal: 20, marginTop: 28 }}>
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              marginBottom: 10,
-            }}
-          >
-            <Text
-              style={{
-                color: 'rgba(255,255,255,0.4)',
-                fontSize: 11,
-                letterSpacing: 1.4,
-                textTransform: 'uppercase',
-                fontWeight: '600',
-              }}
-            >
-              Your products
-            </Text>
-            <Pressable onPress={() => buzz('light')}>
-              <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 12, fontWeight: '600' }}>
-                View all
-              </Text>
-            </Pressable>
-          </View>
-
-          <View style={{ gap: 10 }}>
-            {DEMO_PRODUCTS.map((p) => (
-              <ProductRow key={p.id} p={p} />
-            ))}
-          </View>
-        </View>
-
-        {/* ===== INSIGHTS STRIP ===== */}
-        <View style={{ paddingHorizontal: 20, marginTop: 20 }}>
-          <GlassCard>
-            <View style={{ padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <View>
-                <Text
-                  style={{
-                    color: 'rgba(255,255,255,0.4)',
-                    fontSize: 10,
-                    letterSpacing: 1.4,
-                    textTransform: 'uppercase',
-                    fontWeight: '600',
-                  }}
-                >
-                  Views, last 7 days
-                </Text>
-                <Text style={{ color: '#FFFFFF', fontSize: 22, fontWeight: '800', letterSpacing: -0.6, marginTop: 2 }}>
-                  {DEMO_STATS.views7d}
-                </Text>
-              </View>
-              {/* Mini sparkline (static bars). Session 5 wires real data. */}
-              <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 3, height: 32 }}>
-                {[10, 18, 12, 22, 16, 28, 20].map((h, i) => (
-                  <View
-                    key={i}
-                    style={{
-                      width: 6,
-                      height: h,
-                      borderRadius: 2,
-                      backgroundColor: 'rgba(255,255,255,0.45)',
-                    }}
-                  />
-                ))}
-              </View>
-            </View>
-          </GlassCard>
-        </View>
-
-        {/* ===== FOOTER NOTE ===== */}
-        <View style={{ paddingHorizontal: 20, marginTop: 28, alignItems: 'center' }}>
-          <Text style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11 }}>
-            {'\uD83D\uDD36'} Demo numbers. Live earnings appear once you connect a shop.
+        {/* ===== FOOTER STATUS ===== */}
+        <View style={{ paddingHorizontal: 20, marginTop: 24, alignItems: 'center' }}>
+          <Text style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11, textAlign: 'center' }}>
+            Earnings appear here once you publish a product and make your first sale.
           </Text>
         </View>
       </ScrollView>

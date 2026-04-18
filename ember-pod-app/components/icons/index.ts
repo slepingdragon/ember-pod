@@ -1,0 +1,12 @@
+export { TshirtIcon } from './TshirtIcon';
+export { HoodieIcon } from './HoodieIcon';
+export { MugIcon } from './MugIcon';
+export { StickerIcon } from './StickerIcon';
+export { SparkleIcon } from './SparkleIcon';
+export { ShopIcon } from './ShopIcon';
+export { PlusIcon } from './PlusIcon';
+export { BellIcon } from './BellIcon';
+export { BoltIcon } from './BoltIcon';
+export { TrendingIcon } from './TrendingIcon';
+export { MailIcon } from './MailIcon';
+export { ClockIcon } from './ClockIcon';

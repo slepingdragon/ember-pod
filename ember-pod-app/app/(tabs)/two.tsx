@@ -4,12 +4,12 @@ import {
   Alert,
   Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   Text,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { GlassCard } from '@/components/GlassCard';
 import { useSession } from '@/lib/session';
@@ -67,7 +67,7 @@ export default function ProfileScreen() {
     : null;
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }}>
+    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: 'transparent' }}>
       <StatusBar barStyle="light-content" backgroundColor="#050505" />
       <ScrollView contentContainerStyle={{ paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
         {/* HEADER */}
@@ -174,17 +174,17 @@ export default function ProfileScreen() {
                   <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '700' }}>{c.name}</Text>
                   <View
                     style={{
-                      paddingHorizontal: 10,
-                      paddingVertical: 4,
+                      paddingHorizontal: 12,
+                      paddingVertical: 5,
                       borderRadius: 9999,
-                      backgroundColor: 'rgba(255,255,255,0.05)',
+                      backgroundColor: 'rgba(255,255,255,0.10)',
                       borderWidth: 1,
-                      borderColor: 'rgba(255,255,255,0.10)',
+                      borderColor: 'rgba(255,255,255,0.20)',
                     }}
                   >
                     <Text
                       style={{
-                        color: 'rgba(255,255,255,0.55)',
+                        color: 'rgba(255,255,255,0.85)',
                         fontSize: 11,
                         fontWeight: '700',
                         letterSpacing: 0.4,
@@ -210,14 +210,14 @@ export default function ProfileScreen() {
                 borderRadius: 14,
                 alignItems: 'center',
                 borderWidth: 1,
-                borderColor: 'rgba(255,255,255,0.15)',
-                backgroundColor: 'rgba(255,255,255,0.04)',
+                borderColor: 'rgba(255,255,255,0.22)',
+                backgroundColor: 'rgba(255,255,255,0.08)',
               },
               pressed && { opacity: 0.8 },
               busy && { opacity: 0.6 },
             ]}
           >
-            <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '700' }}>
+            <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '800' }}>
               {busy ? 'Signing out…' : 'Sign out'}
             </Text>
           </Pressable>
